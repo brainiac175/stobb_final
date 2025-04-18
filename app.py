@@ -5,13 +5,13 @@ from dash import Dash, dcc, html, Input, Output
 # Load cleaned dataset
 df = pd.read_csv("spotify_dashboard_cleaned.csv")
 
-# Dropdown values
+# Prepare dropdown values
 genres = sorted(df["track_genre"].dropna().unique())
 years = sorted(df["year"].unique())
 
-# Init app
+# Define the Dash app
 app = Dash(__name__)
-server = app.server  # Required for deployment on Render
+server = app.server
 
 # Layout
 app.layout = html.Div([
@@ -32,7 +32,7 @@ app.layout = html.Div([
     dcc.Graph(id='animated-scatter')
 ])
 
-# Callback: Top 10 artists by popularity (animated by year)
+# Bar chart callback
 @app.callback(
     Output('bar-chart', 'figure'),
     Input('genre-dropdown', 'value')
@@ -45,7 +45,7 @@ def update_bar_chart(genre):
         .sort_values(by=['year', 'popularity'], ascending=[True, False])
     )
     top10 = top_artists.groupby("year").head(10)
-    fig = px.bar(
+    return px.bar(
         top10,
         x="artists",
         y="popularity",
@@ -54,16 +54,15 @@ def update_bar_chart(genre):
         title="Top 10 Artists by Popularity (Animated by Year)",
         animation_frame="year"
     )
-    return fig
 
-# Callback: Danceability vs Energy (animated by year)
+# Scatter animation callback
 @app.callback(
     Output('animated-scatter', 'figure'),
     Input('genre-dropdown', 'value')
 )
 def update_animated_scatter(genre):
     filtered = df[df['track_genre'] == genre]
-    fig = px.scatter(
+    return px.scatter(
         filtered,
         x="danceability",
         y="energy",
@@ -75,9 +74,9 @@ def update_animated_scatter(genre):
         range_y=[0, 1],
         title="Danceability vs Energy (Animated by Year)"
     )
-    return fig
 
-# Run server
+# Run app locally
 if __name__ == "__main__":
     app.run_server(debug=True)
+
 
