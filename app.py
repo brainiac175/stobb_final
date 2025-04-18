@@ -2,74 +2,84 @@ import pandas as pd
 import plotly.express as px
 from dash import Dash, dcc, html, Input, Output
 
-# Load and clean dataset
+# Load and clean data
 df = pd.read_csv("spotify_dashboard_cleaned.csv")
-df.dropna(subset=["track_genre", "danceability", "energy", "popularity", "track_name", "artists"], inplace=True)
-df = df[df["popularity"] > 0]
 
-# Genre dropdown options
+# Drop rows with critical missing values
+df = df.dropna(subset=["track_genre", "artists", "popularity", "energy", "danceability", "track_name"])
+
+# Keep only valid numeric values (optional based on your data quality)
+df = df[(df["popularity"] >= 0) & (df["popularity"] <= 100)]
+
+# Unique, sorted genres
 genres = sorted(df["track_genre"].unique())
 
-# Setup Dash app
+# Initialize app
 app = Dash(__name__)
-server = app.server  # <- This is CRUCIAL for Render
+server = app.server  # <-- This is what Render looks for!
 
-# Layout
 app.layout = html.Div([
     html.H1("🎶 Spotify Music Dashboard", style={'textAlign': 'center'}),
 
     html.Div([
-        html.Label("Select Genre"),
+        html.Label("Select Genre:"),
         dcc.Dropdown(
             id="genre-dropdown",
-            options=[{"label": genre, "value": genre} for genre in genres],
+            options=[{"label": g, "value": g} for g in genres],
             value=genres[0]
         )
     ], style={"width": "50%", "margin": "auto"}),
 
     html.Hr(),
 
-    dcc.Graph(id="top-artists-bar"),
-    dcc.Graph(id="animated-scatter")
+    dcc.Graph(id="popularity-bar"),
+    dcc.Graph(id="energy-dance-scatter")
 ])
 
-# Callbacks
 @app.callback(
-    Output("top-artists-bar", "figure"),
+    Output("popularity-bar", "figure"),
     Input("genre-dropdown", "value")
 )
-def update_bar_chart(genre):
+def update_popularity(selected_genre):
+    filtered = df[df["track_genre"] == selected_genre]
     top_artists = (
-        df[df["track_genre"] == genre]
-        .groupby("artists")["popularity"]
+        filtered.groupby("artists")["popularity"]
         .mean()
         .nlargest(10)
         .reset_index()
     )
-    return px.bar(top_artists, x="artists", y="popularity", title=f"Top 10 Artists by Popularity in {genre}")
+    return px.bar(
+        top_artists,
+        x="artists",
+        y="popularity",
+        title=f"Top 10 Artists in {selected_genre} (by Avg. Popularity)",
+        animation_frame=None,
+        labels={"popularity": "Avg Popularity"},
+        template="plotly_dark"
+    )
 
 @app.callback(
-    Output("animated-scatter", "figure"),
+    Output("energy-dance-scatter", "figure"),
     Input("genre-dropdown", "value")
 )
-def update_scatter(genre):
-    filtered = df[df["track_genre"] == genre]
-    fig = px.scatter(
+def update_scatter(selected_genre):
+    filtered = df[df["track_genre"] == selected_genre]
+    return px.scatter(
         filtered,
         x="danceability",
         y="energy",
-        animation_frame="popularity",  # Treat popularity like a timeline
         size="popularity",
-        hover_name="track_name",
         color="artists",
-        title=f"Energy vs. Danceability in {genre} (Animated by Popularity)",
-        height=600
+        hover_name="track_name",
+        title=f"Energy vs Danceability in {selected_genre}",
+        animation_frame=None,
+        template="plotly_dark"
     )
-    fig.update_layout(transition={'duration': 500})
-    return fig
 
+# Make sure this is callable for gunicorn
 if __name__ == "__main__":
     app.run_server(debug=True)
+
 
 
 
