@@ -2,81 +2,74 @@ import pandas as pd
 import plotly.express as px
 from dash import Dash, dcc, html, Input, Output
 
-# Load cleaned dataset
+# Load and clean dataset
 df = pd.read_csv("spotify_dashboard_cleaned.csv")
+df.dropna(subset=["track_genre", "danceability", "energy", "popularity", "track_name", "artists"], inplace=True)
+df = df[df["popularity"] > 0]
 
-# Prepare dropdown values
-genres = sorted(df["track_genre"].dropna().unique())
-years = sorted(df["year"].unique())
+# Genre dropdown options
+genres = sorted(df["track_genre"].unique())
 
-# Define the Dash app
+# Setup Dash app
 app = Dash(__name__)
-server = app.server
+server = app.server  # <- This is CRUCIAL for Render
 
 # Layout
 app.layout = html.Div([
-    html.H1("🎧 Spotify Animated Dashboard", style={'textAlign': 'center'}),
+    html.H1("🎶 Spotify Music Dashboard", style={'textAlign': 'center'}),
 
     html.Div([
-        html.Label("Choose Genre:"),
+        html.Label("Select Genre"),
         dcc.Dropdown(
-            id='genre-dropdown',
-            options=[{'label': genre, 'value': genre} for genre in genres],
+            id="genre-dropdown",
+            options=[{"label": genre, "value": genre} for genre in genres],
             value=genres[0]
         )
-    ], style={'width': '48%', 'margin': 'auto'}),
+    ], style={"width": "50%", "margin": "auto"}),
 
     html.Hr(),
 
-    dcc.Graph(id='bar-chart'),
-    dcc.Graph(id='animated-scatter')
+    dcc.Graph(id="top-artists-bar"),
+    dcc.Graph(id="animated-scatter")
 ])
 
-# Bar chart callback
+# Callbacks
 @app.callback(
-    Output('bar-chart', 'figure'),
-    Input('genre-dropdown', 'value')
+    Output("top-artists-bar", "figure"),
+    Input("genre-dropdown", "value")
 )
 def update_bar_chart(genre):
-    filtered = df[df['track_genre'] == genre]
     top_artists = (
-        filtered.groupby(['year', 'artists'])['popularity']
-        .mean().reset_index()
-        .sort_values(by=['year', 'popularity'], ascending=[True, False])
+        df[df["track_genre"] == genre]
+        .groupby("artists")["popularity"]
+        .mean()
+        .nlargest(10)
+        .reset_index()
     )
-    top10 = top_artists.groupby("year").head(10)
-    return px.bar(
-        top10,
-        x="artists",
-        y="popularity",
-        color="year",
-        barmode="group",
-        title="Top 10 Artists by Popularity (Animated by Year)",
-        animation_frame="year"
-    )
+    return px.bar(top_artists, x="artists", y="popularity", title=f"Top 10 Artists by Popularity in {genre}")
 
-# Scatter animation callback
 @app.callback(
-    Output('animated-scatter', 'figure'),
-    Input('genre-dropdown', 'value')
+    Output("animated-scatter", "figure"),
+    Input("genre-dropdown", "value")
 )
-def update_animated_scatter(genre):
-    filtered = df[df['track_genre'] == genre]
-    return px.scatter(
+def update_scatter(genre):
+    filtered = df[df["track_genre"] == genre]
+    fig = px.scatter(
         filtered,
         x="danceability",
         y="energy",
+        animation_frame="popularity",  # Treat popularity like a timeline
         size="popularity",
-        color="artists",
         hover_name="track_name",
-        animation_frame="year",
-        range_x=[0, 1],
-        range_y=[0, 1],
-        title="Danceability vs Energy (Animated by Year)"
+        color="artists",
+        title=f"Energy vs. Danceability in {genre} (Animated by Popularity)",
+        height=600
     )
+    fig.update_layout(transition={'duration': 500})
+    return fig
 
-# Run app locally
 if __name__ == "__main__":
     app.run_server(debug=True)
+
 
 
