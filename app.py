@@ -1,54 +1,50 @@
-import os
-import zipfile
 import pandas as pd
 import plotly.express as px
 from dash import Dash, dcc, html, Input, Output
 
-# STEP 1: Download dataset from Kaggle
-def download_kaggle_data():
-    os.environ['KAGGLE_USERNAME'] = 'your_username'
-    os.environ['KAGGLE_KEY'] = 'your_api_key'
+# Load dataset
+df = pd.read_csv("spotify_dashboard_data.csv")
 
-    if not os.path.exists("data"):
-        os.makedirs("data")
+genres = sorted(df["track_genre"].dropna().unique())
 
-    os.system("kaggle datasets download -d maharshipandya/spotify-tracks-dataset -p data")
-
-    # Unzip it
-    with zipfile.ZipFile("data/spotify-tracks-dataset.zip", 'r') as zip_ref:
-        zip_ref.extractall("data")
-
-download_kaggle_data()
-
-# STEP 2: Load and preprocess
-df = pd.read_csv("data/SpotifyTracks.csv")
-df["release_date"] = pd.to_datetime(df["release_date"], errors="coerce")
-df = df.dropna(subset=["artists", "release_date", "popularity"])
-df["year"] = df["release_date"].dt.year
-
-grouped = df.groupby(["year", "artists"])["popularity"].mean().reset_index()
-grouped_top = grouped.sort_values(["year", "popularity"], ascending=[True, False]).groupby("year").head(10)
-
-# STEP 3: Dash App
 app = Dash(__name__)
 server = app.server
 
 app.layout = html.Div([
-    html.H1("Spotify Top Artists (Kaggle)", style={'textAlign': 'center'}),
-    dcc.Graph(
-        id='animated-scatter',
-        figure=px.scatter(
-            grouped_top,
-            x='year',
-            y='popularity',
-            animation_frame='year',
-            color='artists',
-            hover_name='artists',
-            size_max=45,
-            title="Artist Popularity Shift Over Time"
+    html.H1("🎵 Spotify Music Insights", style={'textAlign': 'center'}),
+
+    html.Div([
+        html.Label("Select Genre:"),
+        dcc.Dropdown(
+            id="genre-dropdown",
+            options=[{"label": g, "value": g} for g in genres],
+            value=genres[0]
         )
-    )
+    ], style={"width": "50%", "margin": "auto"}),
+
+    html.Hr(),
+
+    dcc.Graph(id="popularity-bar"),
+    dcc.Graph(id="energy-vs-danceability")
 ])
+
+@app.callback(
+    Output("popularity-bar", "figure"),
+    Input("genre-dropdown", "value")
+)
+def update_bar_chart(selected_genre):
+    dff = df[df["track_genre"] == selected_genre]
+    top_artists = dff.groupby("artists")["popularity"].mean().nlargest(10).reset_index()
+    return px.bar(top_artists, x="artists", y="popularity", title=f"Top Artists in {selected_genre}")
+
+@app.callback(
+    Output("energy-vs-danceability", "figure"),
+    Input("genre-dropdown", "value")
+)
+def update_scatter(selected_genre):
+    dff = df[df["track_genre"] == selected_genre]
+    return px.scatter(dff, x="danceability", y="energy", size="popularity", hover_name="track_name",
+                      title=f"Energy vs. Danceability in {selected_genre}", color="artists")
 
 if __name__ == "__main__":
     app.run_server(debug=True)
